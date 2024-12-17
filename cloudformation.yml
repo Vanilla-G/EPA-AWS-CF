@@ -17,7 +17,7 @@ Parameters:
     NoEcho: true
     Description: The password for the RDS database.
 
-  AWS_KEY_NAME:
+  KeyName:
     Type: String
     Description: The name of the EC2 key pair to allow SSH access to the instance.
     Default: "default-key"  # Optional, replace with your key pair name
@@ -74,7 +74,7 @@ Resources:
     Properties:
       ImageId: ami-05c172c7f0d3aed00
       InstanceType: t2.micro
-      KeyName: !Ref AWS_KEY_NAME  # Reference the parameter
+      KeyName: !Ref KeyName  # Reference the new parameter name
       SecurityGroups:
         - !Ref EC2SecurityGroup
       Tags:
