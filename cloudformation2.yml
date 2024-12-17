@@ -1,0 +1,132 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Webserver EPA-AWS Ubuntu VM GHA with RDS and EC2 Security Group Automation
+Parameters:
+  RdsDbName:
+    Type: String
+    Description: The name of the RDS database.
+
+  RdsDbUsername:
+    Type: String
+    Description: The username for the RDS database.
+
+  RdsPassword:
+    Type: String
+    NoEcho: true  # Ensures the password is not echoed in logs
+    Description: The password for the RDS database.
+
+  AWS_KEY_NAME:
+    Type: String
+    Description: The name of the AWS key pair to use for the EC2 instance.
+
+Resources:
+  # Create a VPC if it doesn't exist
+  MyVPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: "10.0.0.0/16"
+      EnableDnsSupport: "true"
+      EnableDnsHostnames: "true"
+
+  # Create an Internet Gateway to attach to the VPC
+  MyInternetGateway:
+    Type: AWS::EC2::InternetGateway
+
+  AttachInternetGateway:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref MyVPC
+      InternetGatewayId: !Ref MyInternetGateway
+
+  # EC2 Instance Security Group
+  EC2SecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: "Allow EC2 instances to access RDS and web traffic"
+      VpcId: !Ref MyVPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: '3306'  # MySQL default port, replace if needed
+          ToPort: '3306'
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: '80'  # HTTP port
+          ToPort: '80'
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: '443'  # HTTPS port
+          ToPort: '443'
+          CidrIp: 0.0.0.0/0
+
+  # RDS Security Group
+  RdsSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: "Allow RDS to be accessed by EC2 instance"
+      VpcId: !Ref MyVPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: '3306'
+          ToPort: '3306'
+          SourceSecurityGroupId: !Ref EC2SecurityGroup
+
+  # EC2 Instance
+  MyEC2Instance:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: t2.micro
+      ImageId: ami-05c172c7f0d3aed00
+      KeyName: !Ref AWS_KEY_NAME
+      SecurityGroupIds:
+        - !Ref EC2SecurityGroup
+      SubnetId: !Ref MySubnet
+      Tags:
+        - Key: Name
+          Value: EPA-AWS
+
+  # Subnet for EC2
+  MySubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref MyVPC
+      CidrBlock: "10.0.1.0/24"
+      AvailabilityZone: us-east-1a
+      MapPublicIpOnLaunch: "true"
+
+  # Elastic IP Association
+  EIPAssociation:
+    Type: AWS::EC2::EIPAssociation
+    Properties:
+      InstanceId: !Ref MyEC2Instance
+      AllocationId: eipalloc-0ccc13405e62ed638
+
+  # RDS Instance
+  MyRDSInstance:
+    Type: AWS::RDS::DBInstance
+    Properties:
+      DBInstanceIdentifier: !Sub "${RdsDbName}-${AWS::StackName}"
+      DBInstanceClass: db.t2.micro
+      Engine: MySQL
+      MasterUsername: !Ref RdsDbUsername
+      MasterUserPassword: !Ref RdsPassword
+      AllocatedStorage: '20'
+      VPCSecurityGroups:
+        - !Ref RdsSecurityGroup
+      DBSubnetGroupName: !Ref MyDBSubnetGroup
+      PubliclyAccessible: true
+
+  # Subnet for RDS
+  MyDBSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: "My DB Subnet Group"
+      SubnetIds:
+        - !Ref MySubnet
+
+Outputs:
+  InstanceId:
+    Description: ID of the created EC2 instance
+    Value: !Ref MyEC2Instance
+
+  RDSInstanceId:
+    Description: ID of the created RDS instance
+    Value: !Ref MyRDSInstance
