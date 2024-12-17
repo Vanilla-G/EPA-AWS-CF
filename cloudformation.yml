@@ -1,26 +1,150 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: Webserver EPA-AWS Ubtunu VM GHA
+Description: Webserver EPA-AWS Ubuntu VM GHA with RDS (MariaDB) and EC2 Security Group Automation with Auto Scaling
+
+Parameters:
+  RdsDbName:
+    Type: String
+    Default: "my_database"
+    Description: The name of the RDS database.
+
+  RdsDbUsername:
+    Type: String
+    Default: "admin"
+    Description: The username for the RDS database.
+
+  RdsPassword:
+    Type: String
+    NoEcho: true  # Ensures the password is not echoed in logs
+    Description: The password for the RDS database.
+
 Resources:
-  MyEC2Instance:
-    Type: AWS::EC2::Instance
+  # Create a VPC if it doesn't exist
+  MyVPC:
+    Type: AWS::EC2::VPC
     Properties:
+      CidrBlock: "10.0.0.0/16"
+      EnableDnsSupport: "true"
+      EnableDnsHostnames: "true"
+
+  # Create an Internet Gateway to attach to the VPC
+  MyInternetGateway:
+    Type: AWS::EC2::InternetGateway
+
+  AttachInternetGateway:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref MyVPC
+      InternetGatewayId: !Ref MyInternetGateway
+
+  # EC2 Instance Security Group
+  EC2SecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: "Allow EC2 instances to access RDS and web traffic"
+      VpcId: !Ref MyVPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: '3306'  # MariaDB default port
+          ToPort: '3306'
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: '80'  # HTTP port
+          ToPort: '80'
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: '443'  # HTTPS port
+          ToPort: '443'
+          CidrIp: 0.0.0.0/0
+
+  # RDS Security Group
+  RdsSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: "Allow RDS to be accessed by EC2 instance"
+      VpcId: !Ref MyVPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: '3306'
+          ToPort: '3306'
+          SourceSecurityGroupId: !Ref EC2SecurityGroup
+
+  # Launch Configuration for EC2 Instances in Auto Scaling Group
+  EC2LaunchConfiguration:
+    Type: AWS::AutoScaling::LaunchConfiguration
+    Properties:
+      ImageId: ami-05c172c7f0d3aed00  # Replace with the AMI ID for your region
       InstanceType: t2.micro
-      ImageId: ami-05c172c7f0d3aed00
-      KeyName: githubactions
-      SecurityGroupIds:
-        - sg-0e78abc49a200c373
-      SubnetId: subnet-01bb4c11f1b39318e
+      KeyName: !Ref AWS_KEY_NAME
+      SecurityGroups:
+        - !Ref EC2SecurityGroup
       Tags:
         - Key: Name
           Value: EPA-AWS
 
+  # Auto Scaling Group
+  EC2AutoScalingGroup:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    Properties:
+      VPCZoneIdentifier:
+        - !Ref MySubnet  # Replace with your subnet(s)
+      LaunchConfigurationName: !Ref EC2LaunchConfiguration
+      MinSize: '1'  # Minimum number of EC2 instances
+      MaxSize: '3'  # Maximum number of EC2 instances
+      DesiredCapacity: '2'  # Desired number of EC2 instances
+      Tags:
+        - Key: Name
+          Value: EPA-AWS
+          PropagateAtLaunch: true
+
+  # Subnet for EC2
+  MySubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref MyVPC
+      CidrBlock: "10.0.1.0/24"
+      AvailabilityZone: eu-west-2a  # Changed to the correct region
+      MapPublicIpOnLaunch: "true"
+
+  # Elastic IP Association
   EIPAssociation:
     Type: AWS::EC2::EIPAssociation
     Properties:
       InstanceId: !Ref MyEC2Instance
-      AllocationId: eipassoc-0cb48e0aab184b2ea
+      AllocationId: eipalloc-0ccc13405e62ed638
+
+  # RDS Instance (MariaDB)
+  MyRDSInstance:
+    Type: AWS::RDS::DBInstance
+    Properties:
+      DBInstanceIdentifier: !Sub "${RdsDbName}-${AWS::StackName}"
+      DBInstanceClass: db.t2.micro
+      Engine: mariadb  # Changed to MariaDB
+      MasterUsername: !Ref RdsDbUsername
+      MasterUserPassword: !Ref RdsPassword
+      AllocatedStorage: '20'
+      VPCSecurityGroups:
+        - !Ref RdsSecurityGroup
+      DBSubnetGroupName: !Ref MyDBSubnetGroup
+      PubliclyAccessible: true
+      MultiAZ: false  # Optional, set to 'true' for multi-availability-zone deployments
+
+  # Subnet for RDS
+  MyDBSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: "My DB Subnet Group"
+      SubnetIds:
+        - !Ref MySubnet
 
 Outputs:
   InstanceId:
     Description: ID of the created EC2 instance
-    Value: !Ref MyEC2Instance
+    Value: !Ref EC2AutoScalingGroup
+
+  RDSInstanceId:
+    Description: ID of the created RDS instance
+    Value: !Ref MyRDSInstance
+
+  AutoScalingGroupName:
+    Description: Name of the Auto Scaling Group
+    Value: !Ref EC2AutoScalingGroup
