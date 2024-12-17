@@ -14,11 +14,15 @@ Parameters:
 
   RdsPassword:
     Type: String
-    NoEcho: true  # Ensures the password is not echoed in logs
+    NoEcho: true
     Description: The password for the RDS database.
 
+  AWS_KEY_NAME:
+    Type: String
+    Description: The name of the EC2 key pair to allow SSH access to the instance.
+    Default: "default-key"  # Optional, replace with your key pair name
+
 Resources:
-  # Create a VPC if it doesn't exist
   MyVPC:
     Type: AWS::EC2::VPC
     Properties:
@@ -26,7 +30,6 @@ Resources:
       EnableDnsSupport: "true"
       EnableDnsHostnames: "true"
 
-  # Create an Internet Gateway to attach to the VPC
   MyInternetGateway:
     Type: AWS::EC2::InternetGateway
 
@@ -36,7 +39,6 @@ Resources:
       VpcId: !Ref MyVPC
       InternetGatewayId: !Ref MyInternetGateway
 
-  # EC2 Instance Security Group
   EC2SecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
@@ -44,19 +46,18 @@ Resources:
       VpcId: !Ref MyVPC
       SecurityGroupIngress:
         - IpProtocol: tcp
-          FromPort: '3306'  # MariaDB default port
+          FromPort: '3306'
           ToPort: '3306'
           CidrIp: 0.0.0.0/0
         - IpProtocol: tcp
-          FromPort: '80'  # HTTP port
+          FromPort: '80'
           ToPort: '80'
           CidrIp: 0.0.0.0/0
         - IpProtocol: tcp
-          FromPort: '443'  # HTTPS port
+          FromPort: '443'
           ToPort: '443'
           CidrIp: 0.0.0.0/0
 
-  # RDS Security Group
   RdsSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
@@ -68,57 +69,52 @@ Resources:
           ToPort: '3306'
           SourceSecurityGroupId: !Ref EC2SecurityGroup
 
-  # Launch Configuration for EC2 Instances in Auto Scaling Group
   EC2LaunchConfiguration:
     Type: AWS::AutoScaling::LaunchConfiguration
     Properties:
-      ImageId: ami-05c172c7f0d3aed00  # Replace with the AMI ID for your region
+      ImageId: ami-05c172c7f0d3aed00
       InstanceType: t2.micro
-      KeyName: !Ref AWS_KEY_NAME
+      KeyName: !Ref AWS_KEY_NAME  # Reference the parameter
       SecurityGroups:
         - !Ref EC2SecurityGroup
       Tags:
         - Key: Name
           Value: EPA-AWS
 
-  # Auto Scaling Group
   EC2AutoScalingGroup:
     Type: AWS::AutoScaling::AutoScalingGroup
     Properties:
       VPCZoneIdentifier:
-        - !Ref MySubnet  # Replace with your subnet(s)
+        - !Ref MySubnet
       LaunchConfigurationName: !Ref EC2LaunchConfiguration
-      MinSize: '1'  # Minimum number of EC2 instances
-      MaxSize: '3'  # Maximum number of EC2 instances
-      DesiredCapacity: '2'  # Desired number of EC2 instances
+      MinSize: '1'
+      MaxSize: '3'
+      DesiredCapacity: '2'
       Tags:
         - Key: Name
           Value: EPA-AWS
           PropagateAtLaunch: true
 
-  # Subnet for EC2
   MySubnet:
     Type: AWS::EC2::Subnet
     Properties:
       VpcId: !Ref MyVPC
       CidrBlock: "10.0.1.0/24"
-      AvailabilityZone: eu-west-2a  # Changed to the correct region
+      AvailabilityZone: eu-west-2a
       MapPublicIpOnLaunch: "true"
 
-  # Elastic IP Association
   EIPAssociation:
     Type: AWS::EC2::EIPAssociation
     Properties:
       InstanceId: !Ref MyEC2Instance
       AllocationId: eipalloc-0ccc13405e62ed638
 
-  # RDS Instance (MariaDB)
   MyRDSInstance:
     Type: AWS::RDS::DBInstance
     Properties:
       DBInstanceIdentifier: !Sub "${RdsDbName}-${AWS::StackName}"
       DBInstanceClass: db.t2.micro
-      Engine: mariadb  # Changed to MariaDB
+      Engine: mariadb
       MasterUsername: !Ref RdsDbUsername
       MasterUserPassword: !Ref RdsPassword
       AllocatedStorage: '20'
@@ -126,9 +122,8 @@ Resources:
         - !Ref RdsSecurityGroup
       DBSubnetGroupName: !Ref MyDBSubnetGroup
       PubliclyAccessible: true
-      MultiAZ: false  # Optional, set to 'true' for multi-availability-zone deployments
+      MultiAZ: false
 
-  # Subnet for RDS
   MyDBSubnetGroup:
     Type: AWS::RDS::DBSubnetGroup
     Properties:
