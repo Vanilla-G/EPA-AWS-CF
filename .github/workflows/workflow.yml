@@ -1,30 +1,36 @@
-name: Deploy AWS Resources
+name: Deploy CloudFormation Stack
 
 on:
   push:
     branches:
-      - main
+      - main  # Trigger deployment on pushes to the 'main' branch
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v2
+      - name: Checkout repository
+        uses: actions/checkout@v3
 
       - name: Set up AWS CLI
         uses: aws-actions/configure-aws-credentials@v1
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ secrets.AWS_DEFAULT_REGION }}  # Should be 'eu-west-2' for London
-
-      - name: Deploy CloudFormation Stack
+          aws-region: ${{ secrets.AWS_DEFAULT_REGION }}
+          
+      - name: Validate CloudFormation template
         run: |
-          aws cloudformation create-stack --stack-name my-stack --template-body file://template.yaml \
-            --parameters \
-              ParameterKey=RdsDbName,ParameterValue=${{ secrets.S_DB_NAME }} \
-              ParameterKey=RdsDbUsername,ParameterValue=${{ secrets.S_DB_USER }} \
-              ParameterKey=RdsPassword,ParameterValue=${{ secrets.S_DB_PASSWORD }} \
-              ParameterKey=AWS_KEY_NAME,ParameterValue=${{ secrets.AWS_KEY_NAME }}
+          aws cloudformation validate-template --template-body file://cloudformation.yml
+
+      - name: Deploy CloudFormation stack
+        run: |
+          aws cloudformation deploy \
+            --template-file cloudformation.yml \
+            --stack-name my-stack-name \
+            --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM  # Include these if your template creates IAM resources
+
+      - name: Output Stack Information
+        run: |
+          aws cloudformation describe-stacks --stack-name my-stack-name
