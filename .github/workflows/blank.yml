@@ -1,0 +1,30 @@
+name: Deploy AWS Resources
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Set up AWS CLI
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_DEFAULT_REGION }}  # Should be 'eu-west-2' for London
+
+      - name: Deploy CloudFormation Stack
+        run: |
+          aws cloudformation create-stack --stack-name my-stack --template-body file://template.yaml \
+            --parameters \
+              ParameterKey=RdsDbName,ParameterValue=${{ secrets.S_DB_NAME }} \
+              ParameterKey=RdsDbUsername,ParameterValue=${{ secrets.S_DB_USER }} \
+              ParameterKey=RdsPassword,ParameterValue=${{ secrets.S_DB_PASSWORD }} \
+              ParameterKey=AWS_KEY_NAME,ParameterValue=${{ secrets.AWS_KEY_NAME }}
