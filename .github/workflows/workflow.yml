@@ -28,10 +28,10 @@ jobs:
         run: |
           aws cloudformation deploy \
             --template-file cloudformation.yml \
-            --stack-name my-stack-name \
-            --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM \
+            --stack-name EPA \
+            --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM \ #update IAM here <<
             --parameter-overrides AWS_KEY_NAME=${{ secrets.AWS_KEY_NAME }}
 
       - name: Output Stack Information
         run: |
-          aws cloudformation describe-stacks --stack-name my-stack-name
+          aws cloudformation describe-stacks --stack-name EPA
